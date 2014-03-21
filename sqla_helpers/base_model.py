@@ -142,24 +142,28 @@ class BaseModel(object):
         return query.filter(*clauses)
 
 
+    @classmethod
     @query_operation(operation_name='one')
     def get(cls, *operators, **criterions):
         """
         Returns an object with criterions given in parameters.
         """
 
+    @classmethod
     @query_operation
     def all(cls):
         """
         Returns all objects from the same class contained in database.
         """
 
+    @classmethod
     @query_operation(operation_name='all')
     def filter(cls, *operators, **criterions):
         """
         Returns a list of objects from a class matching criterions given in parameters.
         """
 
+    @classmethod
     @query_operation
     def count(cls, *operators, **criterions):
         """
