@@ -1,38 +1,110 @@
 #-*- coding: utf-8 -*-
 """
+.. autoclass:: SessionMakerExists
+    :members:
+    
+.. autofunction:: query_operation
+
 .. autoclass:: BaseModel
     :members:
 """
+from functools import wraps
 from sqlalchemy.orm.properties import RelationshipProperty
 from sqlalchemy.orm.collections import InstrumentedList
 
 from sqla_helpers import loading
 from sqla_helpers.process import process_params
+from sqla_helpers.utils import call_if_callable
+
+class SessionMakerExists(Exception):
+    """
+    Exception raised when a session maker is already registered in :class:`sqla_helpers.base_model.BaseModel`
+    """
+    def __unicode__(self):
+        return u'A session maker is already registered.'
+
+    def __str__(self):
+        return 'A session maker is already registered'
+
 
 class ClassProperty(property):
     """
-    Class an alternative use or property decorator in class attribute.
+    Provide a decorator `property` to classemethod
     """
     def __get__(self, cls, owner):
         return self.fget.__get__(None, owner)()
 
 
+def query_operation(decorated_method=None, operation_name=None):
+    """
+    query_operation process a search on a query with criterion and operators.
+    Then, the operation_name operation is called on the query. If operation_name is not set
+    the operation_name is taken from the decorated method
+
+    .. code-block:: python
+
+        @query_operation
+        def count(cls, *operators, **criterions):
+            # This method will call the cls.search(*operators, **criterions)
+            # Then , it will call count operation on the result of previous search
+            # I.E. : the generated code will be "return cls.search(*operators, **criterions).count()"
+
+        @query_operation(operation_name='one')
+        def get(cls, *operators, **criterions):
+            # It will process the same thing above, except the function compute on the query will be 'one'
+            # I.E. : return cls.search(*operators, **criterions).one()
+ 
+    .. warning:
+
+        This decorataror defines the decorated_method as a classmethod.
+
+    """
+
+    if  decorated_method and operation_name is None:
+        operation_name = decorated_method.__name__
+
+    def _wrapper(decorated_method):
+
+        @classmethod
+        @wraps(decorated_method)
+        def _decorator(querying_class, *operators, **criterions):
+
+            query = querying_class.search(*operators, **criterions)
+            method = query.__getattribute__(operation_name)
+            return method()
+
+        return _decorator
+
+    if decorated_method is not None:
+        return _wrapper(decorated_method)
+    else:
+        return _wrapper
+
+
 class BaseModel(object):
     """
     Base Model Class.
-    Provide syntatic sugar for getting object from database.
+    Provide syntactic sugar for getting object from database.
     """
 
+    sessionmaker = None
     process_params = classmethod(process_params)
 
 
     @classmethod
-    def register_sessionmaker(cls, sessionmaker):
+    def register_sessionmaker(cls, sessionmaker, force=False):
         """
         Register the function for making session.
         This registered function mustn't have any parameters.
+        For a globale session, just put the session as parameter.
+        If a session maker is already registered, an exception is raised to avoid conflict.
+        But, if you are sure about what your are doing, you can set `force` parameter to True.
+        It's not advice.
         """
-        cls.sessionmaker = staticmethod(sessionmaker)
+        if cls.sessionmaker is None or force:
+            cls.sessionmaker = staticmethod(sessionmaker)
+        else:
+            raise SessionMakerExists()	
 
 
     @ClassProperty
@@ -41,16 +113,16 @@ class BaseModel(object):
         """
         Call :attr:`BaseModel.sessionmaker` and returns a new session.
 
-        Don't forget to call  :attr:`BaseModel.sessionmaker` in application's initialization.
+        Don't forget to call  :attr:`BaseModel.sessionmaker_maker` in application's initialization.
         """
-        return cls.sessionmaker()
+        return call_if_callable(cls.sessionmaker)
 
 
     @classmethod
     def search(cls, *operator, **criterion):
         """
-        Object seatch with filter pass in arguments.
-        Return a :class:`sqlachemy.orm.query.Query` object.
+        Object search with criterions given in arguments.
+        Returns a :class:`sqlachemy.orm.query.Query` object.
 
         Filters can be chained.
         """
@@ -70,39 +142,43 @@ class BaseModel(object):
         return query.filter(*clauses)
 
 
-    @classmethod
+    @query_operation(operation_name='one')
     def get(cls, *operators, **criterions):
         """
-        Return a object with criterions passed in parameters.
+        Returns an object with criterions given in parameters.
         """
-        query = cls.search(*operators, **criterions)
-        return query.one()
 
-
-    @classmethod
+    @query_operation
     def all(cls):
         """
-        Return all objects from a same class containts in database.
+        Returns all objects from the same class contained in database.
         """
-        return cls.search().all()
 
-
-    @classmethod
+    @query_operation(operation_name='all')
     def filter(cls, *operators, **criterions):
         """
-        Return a list of objects from a class matching criterions passed in parameters.
+        Returns a list of objects from a class matching criterions given in parameters.
         """
-        query = cls.search(*operators, **criterions)
-        return query.all()
+
+    @query_operation
+    def count(cls, *operators, **criterions):
+        """
+        Returns the number of objects matched by criterions
+
+        .. code-block:: python
+
+           >>> Treatment.count(status=u'OK')
+           8
+        """
 
 
     @classmethod
     def load(cls, dictionary, hard=False):
         """
-        Return a object from class with attributes got in dictionnary's parameters.
+        Returns an object from class with attributes got in dictionary's parameters.
 
-        If all values got from dictionnary form the primary key, the object is
-        loaded from database. Other values are set in the loading object.
+        If all the primary keys are found in the dictionary, the object is
+        loaded from database. Otherwise, values are set in the loading object.
 
         .. code-block:: python
 
@@ -116,8 +192,8 @@ class BaseModel(object):
             >>> Treatment.get(id=1).name
             'Awesome Treatment'
 
-        If `hard` parameter is True, an axception is raised if a value isn't found
-        in parameter's dictionnary.
+        If `hard` parameter is True, an exception is raised if a value isn't found
+        in parameter's dictionary.
         """
 
         # On détermine si on doit charger l'instance depuis la base ou non.
@@ -181,13 +257,13 @@ class BaseModel(object):
 
     def dump(self, excludes=[], depth=2):
         """
-        Return object as dictionnary with dependencies.
+        Returns object as dictionary with dependencies.
 
         `Depth` limits the recursion.
 
         IE : With depth set as 1, objects in relations aren't search.
 
-        `excludes` use to excludes unwanted attributes.
+        `excludes` use to exclude unwanted attributes.
 
         .. code-block:: python
 

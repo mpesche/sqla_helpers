@@ -1,4 +1,20 @@
-0.3.4 released on 2013-02-2
+0.5.1 released on 2014-02-21
+    * Filter method returns a correct list, not a queryset
+
+0.5.0 released on 2014-02-20
+    * Add count method for BaseModel
+
+0.4.1 released on 2013-09-29
+	* Fixe the packaging message
+
+0.4.0 released on 2013-09-29
+	* The sessionmaker can be just a session. Not need to have a lambda function to return it.
+	* Raise an exception when try to register a session maker despite a session maker already registered
+
+0.3.5 released on 2013-09-15
+	* Fix the loading of an attributes as list (BaseModel.load)
+
+0.3.4 released on 2013-02-02
 	* Corrige les opérateur __le et __ge
 
 0.3.3 released on 2013-02-14

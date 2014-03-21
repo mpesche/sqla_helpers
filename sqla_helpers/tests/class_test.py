@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqla_helpers.base_model import BaseModel
 
 DeclarativeModel = declarative_base(cls=BaseModel)
+metadata = DeclarativeModel.metadata
 
 class Treatment(DeclarativeModel):
     __tablename__ = 'treatment'
@@ -14,8 +15,15 @@ class Treatment(DeclarativeModel):
     status_id = Column('status_id', ForeignKey("status.id"))
     status = relationship('Status', backref='treatments')
 
+    def __init__(self, name, status):
+        self.name = name
+        self.status = status
+
 
 class Status(DeclarativeModel):
     __tablename__ = 'status'
     id = Column('id', Integer, primary_key=True)
     name = Column('name', String)
+
+    def __init__(self, name):
+        self.name = name
